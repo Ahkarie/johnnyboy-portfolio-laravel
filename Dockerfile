@@ -3,8 +3,8 @@ FROM php:8.3-apache
 # Enable URL rewriting and set document root to /public
 RUN a2enmod rewrite
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
-    && sed -ri -e 's!Directory /var/www/!Directory ${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
+RUN sed -ri -e "s!/var/www/html!${APACHE_DOCUMENT_ROOT}!g" /etc/apache2/sites-available/*.conf \
+    && sed -ri -e "s!Directory /var/www/!Directory ${APACHE_DOCUMENT_ROOT}!g" /etc/apache2/apache2.conf
 
 # System deps for PHP extensions & Composer performance
 RUN apt-get update && apt-get install -y \
@@ -22,6 +22,10 @@ RUN docker-php-ext-configure zip \
         pdo_mysql \
         pdo_sqlite
 
+# Allow .htaccess and grant access to public dir
+RUN printf "<Directory ${APACHE_DOCUMENT_ROOT}>\nAllowOverride All\nRequire all granted\n</Directory>\n" > /etc/apache2/conf-available/laravel.conf \
+    && a2enconf laravel
+
 # Install Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
@@ -36,6 +40,9 @@ RUN composer install --no-dev --prefer-dist --no-interaction --no-progress --opt
 
 # Permissions for cache/logs
 RUN chown -R www-data:www-data storage bootstrap/cache
+
+# Laravel env and key
+RUN cp -n .env.example .env && php artisan key:generate --force
 
 # Make Apache listen on the PORT provided by the platform (Render sets $PORT)
 CMD ["bash", "-lc", "sed -i \"s/^Listen .*/Listen ${PORT:-8080}/\" /etc/apache2/ports.conf && apache2-foreground"]
